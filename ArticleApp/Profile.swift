@@ -8,7 +8,7 @@ struct ProfileView: View {
     
     // Теги, которые есть во вкладке Tags (можно вынести в отдельное хранилище при необходимости)
     let allTags = ["IT", "Biology", "Science", "AI", "Plants", "School", "University"]
-    let tabTitles = ["Information", "My drafts"]
+    let tabTitles = ["Information", "Drafts"]
     
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -88,6 +88,9 @@ struct ProfileView: View {
                 ArticleCreateView(store: store, allTags: allTags, draftToEdit: editingDraft)
             }
         }
+        .onAppear {
+            store.loadDraftsFromServer()
+        }
     }
 }
 
@@ -98,68 +101,71 @@ struct DraftCard: View {
     var onPublish: (() -> Void)? = nil
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let image = article.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            } else if let imageName = article.imageName {
-                Image(imageName)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
+        HStack {
+            VStack(alignment: .leading, spacing: 8) {
+                if let image = article.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(2, contentMode: .fill)
+                        .frame(height: 120)
+                        .clipped()
+                        .cornerRadius(12)
+                } else if let imageName = article.imageName {
+                    Image(imageName)
+                        .resizable()
+                        .aspectRatio(2, contentMode: .fill)
+                        .frame(height: 120)
+                        .clipped()
+                        .cornerRadius(12)
+                }
+                
+                Text("Article: \(article.title)")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("Description: \(article.description)")
+                    .font(.system(size: 15))
+                    .foregroundColor(.gray)
+                Text("Tags: \(article.tags.joined(separator: ", "))")
+                    .font(.system(size: 15, weight: .medium))
+                
+                HStack(spacing: 12) {
+                    Button(action: {
+                        onPublish?()
+                    }) {
+                        Text("Publish")
+                            .font(.system(size: 14, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                    }
+                    Button(action: {
+                        store.removeDraft(article)
+                    }) {
+                        Text("Delete")
+                            .font(.system(size: 14, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                    }
+                    Button(action: {
+                        onEdit?()
+                    }) {
+                        Text("Edit")
+                            .font(.system(size: 14, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                    }
+                }
             }
-            
-            Text("Article: \(article.title)")
-                .font(.system(size: 17, weight: .semibold))
-            Text("Description: \(article.description)")
-                .font(.system(size: 15))
-                .foregroundColor(.gray)
-            Text("Tags: \(article.tags.joined(separator: ", "))")
-                .font(.system(size: 15, weight: .medium))
-            
-            HStack(spacing: 12) {
-                Button(action: {
-                    onPublish?()
-                }) {
-                    Text("Publish")
-                        .font(.system(size: 14, weight: .medium))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                }
-                Button(action: {
-                    store.removeDraft(article)
-                }) {
-                    Text("Delete")
-                        .font(.system(size: 14, weight: .medium))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                }
-                Button(action: {
-                    onEdit?()
-                }) {
-                    Text("Edit")
-                        .font(.system(size: 14, weight: .medium))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                }
-            }
+            .padding()
+            .background(Color.white)
+            .cornerRadius(16)
+            .shadow(color: Color(.black).opacity(0.04), radius: 4, x: 0, y: 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color(.black).opacity(0.04), radius: 4, x: 0, y: 2)
     }
 }
 

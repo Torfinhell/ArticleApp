@@ -39,4 +39,30 @@ class ArticleStore: ObservableObject {
     func removeDraft(_ article: Article) {
         drafts.removeAll { $0.id == article.id }
     }
+    
+    func loadDraftsFromServer() {
+        DraftsAPI.shared.fetchDrafts { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let draftsDTO):
+                    print("Загружено черновиков с сервера: \(draftsDTO.count)")
+                    self.drafts = draftsDTO.prefix(10).compactMap { dto in
+                        print("Draft: \(dto.title), id: \(dto.id)")
+                        guard let uuid = UUID(uuidString: dto.id) else { return nil }
+                        return Article(
+                            id: uuid,
+                            image: nil,
+                            imageName: nil,
+                            title: dto.title,
+                            description: dto.content,
+                            tags: dto.tags,
+                            isDraft: true
+                        )
+                    }
+                case .failure(let error):
+                    print("Ошибка загрузки черновиков: \(error)")
+                }
+            }
+        }
+    }
 } 
