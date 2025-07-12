@@ -42,4 +42,43 @@ class DraftsAPI {
             }
         }.resume()
     }
+    
+    func deleteDraft(draftId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/drafts/\(draftId)") else {
+            completion(.failure(NSError(domain: "URL error", code: 0)))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            completion(.success(()))
+        }.resume()
+    }
+    
+    func fetchDraft(draftId: String, completion: @escaping (Result<DraftDTO, Error>) -> Void) {
+        guard let url = URL(string: "\(baseURL)/drafts/\(draftId)") else {
+            completion(.failure(NSError(domain: "URL error", code: 0)))
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            guard let data = data else {
+                completion(.failure(NSError(domain: "No data", code: 0)))
+                return
+            }
+            do {
+                let draft = try JSONDecoder().decode(DraftDTO.self, from: data)
+                completion(.success(draft))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
 } 

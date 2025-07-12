@@ -56,8 +56,8 @@ struct ProfileView: View {
                     ScrollView {
                         VStack(spacing: 20) {
                             ForEach(store.drafts) { draft in
-                                DraftCard(article: draft, store: store, onEdit: {
-                                    editingDraft = draft
+                                DraftCard(article: draft, store: store, onEditWithDraft: { article in
+                                    editingDraft = article
                                     showCreateArticle = true
                                 }, onPublish: {
                                     store.addArticle(Article(id: draft.id, image: draft.image, imageName: draft.imageName, title: draft.title, description: draft.description, tags: draft.tags, isDraft: false))
@@ -97,8 +97,11 @@ struct ProfileView: View {
 struct DraftCard: View {
     let article: Article
     @ObservedObject var store: ArticleStore
-    var onEdit: (() -> Void)? = nil
+    var onEditWithDraft: ((Article) -> Void)? = nil
     var onPublish: (() -> Void)? = nil
+    @State private var showFullDescription: Bool = false
+    @State private var isDeleting: Bool = false
+    @State private var isLoadingEdit: Bool = false
     
     var body: some View {
         HStack {
@@ -121,9 +124,27 @@ struct DraftCard: View {
                 
                 Text("Article: \(article.title)")
                     .font(.system(size: 17, weight: .semibold))
-                Text("Description: \(article.description)")
-                    .font(.system(size: 15))
-                    .foregroundColor(.gray)
+                if showFullDescription || article.description.count <= 100 {
+                    Text("Description: \(article.description)")
+                        .font(.system(size: 15))
+                        .foregroundColor(.gray)
+                    if article.description.count > 100 {
+                        Button(action: { showFullDescription = false }) {
+                            Text("Show less")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.blue)
+                        }
+                    }
+                } else {
+                    Text("Description: \(article.description.prefix(100))...")
+                        .font(.system(size: 15))
+                        .foregroundColor(.gray)
+                    Button(action: { showFullDescription = true }) {
+                        Text("Show more")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.blue)
+                    }
+                }
                 Text("Tags: \(article.tags.joined(separator: ", "))")
                     .font(.system(size: 15, weight: .medium))
                 
@@ -139,24 +160,65 @@ struct DraftCard: View {
                             .cornerRadius(8)
                     }
                     Button(action: {
-                        store.removeDraft(article)
+                        isDeleting = true
+                        DraftsAPI.shared.deleteDraft(draftId: article.id.uuidString) { result in
+                            DispatchQueue.main.async {
+                                isDeleting = false
+                                switch result {
+                                case .success:
+                                    store.removeDraft(article)
+                                case .failure(let error):
+                                    print("Ошибка удаления черновика: \(error)")
+                                }
+                            }
+                        }
                     }) {
-                        Text("Delete")
-                            .font(.system(size: 14, weight: .medium))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
+                        if isDeleting {
+                            ProgressView()
+                                .frame(width: 24, height: 24)
+                        } else {
+                            Text("Delete")
+                                .font(.system(size: 14, weight: .medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                        }
                     }
                     Button(action: {
-                        onEdit?()
+                        isLoadingEdit = true
+                        DraftsAPI.shared.fetchDraft(draftId: article.id.uuidString) { result in
+                            DispatchQueue.main.async {
+                                isLoadingEdit = false
+                                switch result {
+                                case .success(let draftDTO):
+                                    let loadedDraft = Article(
+                                        id: UUID(uuidString: draftDTO.id) ?? UUID(),
+                                        image: nil,
+                                        imageName: nil,
+                                        title: draftDTO.title,
+                                        description: draftDTO.content,
+                                        tags: draftDTO.tags,
+                                        isDraft: true
+                                    )
+                                    onEditWithDraft?(loadedDraft)
+                                case .failure(let error):
+                                    print("Ошибка загрузки черновика для редактирования: \(error)")
+                                }
+                            }
+                        }
                     }) {
-                        Text("Edit")
-                            .font(.system(size: 14, weight: .medium))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
+                        if isLoadingEdit {
+                            ProgressView()
+                                .frame(width: 24, height: 24)
+                        } else {
+                            Text("Edit")
+                                .font(.system(size: 14, weight: .medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                        }
                     }
                 }
             }
