@@ -1,18 +1,47 @@
 import SwiftUI
 
+// Image cache utility
+class ImageCache {
+    static let shared = ImageCache()
+    private let cache = NSCache<NSString, UIImage>()
+    
+    private init() {
+        cache.countLimit = 100 // Maximum number of images to cache
+        cache.totalCostLimit = 1024 * 1024 * 100 // 100 MB limit
+    }
+    
+    func setImage(_ image: UIImage, forKey key: String) {
+        cache.setObject(image, forKey: key as NSString)
+    }
+    
+    func getImage(forKey key: String) -> UIImage? {
+        return cache.object(forKey: key as NSString)
+    }
+    
+    func removeImage(forKey key: String) {
+        cache.removeObject(forKey: key as NSString)
+    }
+    
+    func clearCache() {
+        cache.removeAllObjects()
+    }
+}
+
 struct Article: Identifiable, Equatable {
     let id: UUID
     var image: UIImage?
     var imageName: String? // для ассетов
+    var imageURL: String? // для сетевых изображений
     var title: String
     var description: String
     var tags: [String]
     var isDraft: Bool
     
-    init(id: UUID = UUID(), image: UIImage? = nil, imageName: String? = nil, title: String, description: String, tags: [String], isDraft: Bool) {
+    init(id: UUID = UUID(), image: UIImage? = nil, imageName: String? = nil, imageURL: String? = nil, title: String, description: String, tags: [String], isDraft: Bool) {
         self.id = id
         self.image = image
         self.imageName = imageName
+        self.imageURL = imageURL
         self.title = title
         self.description = description
         self.tags = tags
@@ -44,6 +73,7 @@ struct CachedArticle: Codable {
             id: uuid,
             image: nil,
             imageName: nil,
+            imageURL: nil, // CachedArticle does not store imageURL
             title: title,
             description: description,
             tags: tags,
@@ -121,6 +151,7 @@ class ArticleStore: ObservableObject {
                             id: uuid,
                             image: nil,
                             imageName: nil,
+                            imageURL: nil,
                             title: dto.title,
                             description: dto.content,
                             tags: dto.tags,
@@ -148,6 +179,7 @@ class ArticleStore: ObservableObject {
                             id: uuid,
                             image: nil,
                             imageName: nil,
+                            imageURL: nil,
                             title: dto.title,
                             description: dto.content,
                             tags: dto.tags,

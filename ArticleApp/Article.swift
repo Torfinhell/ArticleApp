@@ -1,5 +1,81 @@
 import SwiftUI
 
+// Cached image view component
+struct CachedImageView: View {
+    let imageURL: String?
+    let imageName: String?
+    let placeholderImage: UIImage?
+    @State private var cachedImage: UIImage?
+    @State private var isLoading = false
+    
+    var body: some View {
+        Group {
+            if let cachedImage = cachedImage {
+                Image(uiImage: cachedImage)
+                    .resizable()
+                    .aspectRatio(2, contentMode: .fill)
+                    .frame(height: 120)
+                    .clipped()
+                    .cornerRadius(12)
+            } else if let imageName = imageName {
+                Image(imageName)
+                    .resizable()
+                    .aspectRatio(2, contentMode: .fill)
+                    .frame(height: 120)
+                    .clipped()
+                    .cornerRadius(12)
+            } else if let placeholderImage = placeholderImage {
+                Image(uiImage: placeholderImage)
+                    .resizable()
+                    .aspectRatio(2, contentMode: .fill)
+                    .frame(height: 120)
+                    .clipped()
+                    .cornerRadius(12)
+            } else {
+                Rectangle()
+                    .fill(Color(.systemGray5))
+                    .frame(height: 120)
+                    .cornerRadius(12)
+                    .overlay(
+                        Image(systemName: "photo")
+                            .font(.system(size: 30))
+                            .foregroundColor(.gray)
+                    )
+            }
+        }
+        .onAppear {
+            loadImage()
+        }
+    }
+    
+    private func loadImage() {
+        guard let imageURL = imageURL, cachedImage == nil else { return }
+        
+        // Check cache first
+        if let cached = ImageCache.shared.getImage(forKey: imageURL) {
+            cachedImage = cached
+            return
+        }
+        
+        isLoading = true
+        
+        // Load from network
+        guard let url = URL(string: imageURL) else { return }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            DispatchQueue.main.async {
+                isLoading = false
+                
+                if let data = data, let image = UIImage(data: data) {
+                    // Cache the image
+                    ImageCache.shared.setImage(image, forKey: imageURL)
+                    cachedImage = image
+                }
+            }
+        }.resume()
+    }
+}
+
 //struct Article: Identifiable {
 //    let id = UUID()
 //    let imageName: String
@@ -12,10 +88,10 @@ struct ArticlesView: View {
     @EnvironmentObject var store: ArticleStore
     @EnvironmentObject var tagsStore: TagsStore
     @EnvironmentObject var likeStore: LikeStore
-    @State private var selectedTab: Int = 1
+    @State private var selectedTab: Int = 0
     @State private var searchText: String = ""
     
-    let tabTitles = ["Following", "For you", "Favorites"]
+    let tabTitles = ["For you", "Favorites"]
     
     var filteredArticles: [Article] {
         store.articles.filter { article in
@@ -23,7 +99,7 @@ struct ArticlesView: View {
             let matchesSearch = searchText.isEmpty ? true : article.title.localizedCaseInsensitiveContains(searchText)
             
             // For favorites tab, only show liked articles
-            if selectedTab == 2 {
+            if selectedTab == 1 {
                 return matchesTags && matchesSearch && likeStore.likedArticleIDs.contains(article.id)
             }
             
@@ -77,23 +153,24 @@ struct ArticlesView: View {
             .padding(.horizontal)
             .padding(.bottom, 8)
             
-            // Список статей
+            // Список статей - Fixed scrolling
             ScrollView {
-                VStack(spacing: 20) {
+                LazyVStack(spacing: 20) {
                     if filteredArticles.isEmpty {
                         VStack(spacing: 16) {
-                            Image(systemName: selectedTab == 2 ? "heart" : "doc.text")
+                            Image(systemName: selectedTab == 1 ? "heart" : "doc.text")
                                 .font(.system(size: 50))
                                 .foregroundColor(.gray)
-                            Text(selectedTab == 2 ? "No favorite articles yet" : "No articles found")
+                            Text(selectedTab == 1 ? "No favorite articles yet" : "No articles found")
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(.gray)
-                            Text(selectedTab == 2 ? "Like some articles to see them here" : "Try adjusting your search or tags")
+                            Text(selectedTab == 1 ? "Like some articles to see them here" : "Try adjusting your search or tags")
                                 .font(.system(size: 14))
                                 .foregroundColor(.gray.opacity(0.8))
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.top, 50)
+                        .frame(maxWidth: .infinity)
                     } else {
                         ForEach(filteredArticles) { article in
                             ArticleCard(article: article)
@@ -105,6 +182,7 @@ struct ArticlesView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 16)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             performSearch()
@@ -130,21 +208,11 @@ struct ArticleCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image = article.image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            } else if let imageName = article.imageName {
-                Image(imageName)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            }
+            CachedImageView(
+                imageURL: article.imageURL,
+                imageName: article.imageName,
+                placeholderImage: article.image
+            )
             
             Text("Article: \(article.title)")
                 .font(.system(size: 17, weight: .semibold))

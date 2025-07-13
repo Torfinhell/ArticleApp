@@ -54,7 +54,7 @@ struct ProfileView: View {
                 } else {
                     // Черновики
                     ScrollView {
-                        VStack(spacing: 20) {
+                        LazyVStack(spacing: 20) {
                             ForEach(store.drafts) { draft in
                                 DraftCard(article: draft, store: store, onEditWithDraft: { article in
                                     editingDraft = article
@@ -72,6 +72,7 @@ struct ProfileView: View {
                                                     id: UUID(uuidString: publishedPost.id) ?? draft.id,
                                                     image: draft.image,
                                                     imageName: draft.imageName,
+                                                    imageURL: draft.imageURL,
                                                     title: publishedPost.title,
                                                     description: publishedPost.content,
                                                     tags: publishedPost.tags,
@@ -90,6 +91,7 @@ struct ProfileView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 80)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             // Кнопка Add Draft
@@ -127,21 +129,11 @@ struct DraftCard: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 8) {
-                if let image = article.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(2, contentMode: .fill)
-                        .frame(height: 120)
-                        .clipped()
-                        .cornerRadius(12)
-                } else if let imageName = article.imageName {
-                    Image(imageName)
-                        .resizable()
-                        .aspectRatio(2, contentMode: .fill)
-                        .frame(height: 120)
-                        .clipped()
-                        .cornerRadius(12)
-                }
+                CachedImageView(
+                    imageURL: article.imageURL,
+                    imageName: article.imageName,
+                    placeholderImage: article.image
+                )
                 
                 Text("Article: \(article.title)")
                     .font(.system(size: 17, weight: .semibold))
@@ -217,6 +209,7 @@ struct DraftCard: View {
                                         id: UUID(uuidString: updatedDraft.id) ?? article.id,
                                         image: article.image,
                                         imageName: article.imageName,
+                                        imageURL: article.imageURL,
                                         title: updatedDraft.title,
                                         description: updatedDraft.content,
                                         tags: updatedDraft.tags,

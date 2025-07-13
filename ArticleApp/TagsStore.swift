@@ -67,4 +67,3 @@ class TagsStore: ObservableObject {
         saveCachedData()
     }
 } 
-} 
