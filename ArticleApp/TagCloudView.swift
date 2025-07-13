@@ -10,17 +10,20 @@ struct TagCircle: Identifiable {
 
 func generateNonOverlappingCircles(
     labels: [String],
-    sizes: [CGFloat],
     areaWidth: CGFloat,
     areaHeight: CGFloat,
     maxTries: Int = 1000
 ) -> [TagCircle] {
     var circles: [TagCircle] = []
-    let count = min(labels.count, sizes.count)
     let padding: CGFloat = 8
+    
+    // Generate random sizes between 40 and 120 for each tag
+    let minSize: CGFloat = 40
+    let maxSize: CGFloat = 120
 
-    for i in 0..<count {
-        let size = sizes[i]
+    for i in 0..<labels.count {
+        // Generate random size for each tag
+        let size = CGFloat.random(in: minSize...maxSize)
         var tries = 0
         var position: CGPoint
         var overlaps: Bool
@@ -53,12 +56,18 @@ func generateNonOverlappingCircles(
 struct TagsTabView: View {
     @EnvironmentObject var tagsStore: TagsStore
 
-    let areaWidth: CGFloat = 600
     let areaHeight: CGFloat = 350
-    let sizes: [CGFloat] = [130, 120, 110, 100, 90, 90, 90, 80, 80, 70, 70, 70, 60, 60, 60]
+    let widthCoefficient: CGFloat = 20 // Coefficient to control width scaling per tag
 
     @State private var tagCircles: [TagCircle] = []
     @State private var lastTagLabels: [String] = []
+    
+    // Dynamic area width based on number of tags
+    var areaWidth: CGFloat {
+        let baseWidth: CGFloat = 600
+        let tagCount = CGFloat(tagsStore.serverTags.count)
+        return baseWidth + (tagCount * widthCoefficient)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,7 +76,7 @@ struct TagsTabView: View {
                 .fontWeight(.bold)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 10)
-                .padding(.bottom, 24)
+                .padding(.bottom, 50)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 ZStack {
@@ -98,10 +107,10 @@ struct TagsTabView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .onAppear {
-            let labels = Array(tagsStore.serverTags.prefix(sizes.count))
+            // Use all tags from server
+            let labels = Array(tagsStore.serverTags)
             tagCircles = generateNonOverlappingCircles(
                 labels: labels,
-                sizes: sizes,
                 areaWidth: areaWidth,
                 areaHeight: areaHeight
             )
@@ -109,11 +118,11 @@ struct TagsTabView: View {
             tagsStore.loadTagsFromServer()
         }
         .onChange(of: tagsStore.serverTags) { newTags in
-            let labels = Array(newTags.prefix(sizes.count))
+            // Use all tags from server
+            let labels = Array(newTags)
             if labels != lastTagLabels {
                 tagCircles = generateNonOverlappingCircles(
                     labels: labels,
-                    sizes: sizes,
                     areaWidth: areaWidth,
                     areaHeight: areaHeight
                 )

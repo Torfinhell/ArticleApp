@@ -108,16 +108,31 @@ class API{
     
     func request(request: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let url = URL(string: "\(baseURL)\(request)") else {
+            print("DEBUG: Failed to create URL for request: \(request)")
             completion(.failure(NSError(domain: "URL error", code: 0)))
             return
         }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "DELETE"
+        print("DEBUG: Making DELETE request to: \(url)")
+        
         URLSession.shared.dataTask(with: urlRequest) { data, response, error in
             if let error = error {
+                print("DEBUG: Network error in request: \(error)")
                 completion(.failure(error))
                 return
             }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("DEBUG: HTTP response status: \(httpResponse.statusCode)")
+                if httpResponse.statusCode >= 400 {
+                    print("DEBUG: HTTP error status: \(httpResponse.statusCode)")
+                    completion(.failure(NSError(domain: "HTTP error", code: httpResponse.statusCode)))
+                    return
+                }
+            }
+            
+            print("DEBUG: Request completed successfully")
             completion(.success(()))
         }.resume()
     }
@@ -175,38 +190,99 @@ class PostsAPI {
         urlComponents?.queryItems = queryItems
         
         guard let url = urlComponents?.url else {
+            print("DEBUG: Failed to create URL for posts")
             completion(.failure(NSError(domain: "URL error", code: 0)))
             return
         }
         
         print("DEBUG: Fetching posts from URL: \(url)")
+        print("DEBUG: Query: '\(query)', Tags: \(tags)")
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                print("DEBUG: Network error: \(error)")
+                print("DEBUG: Network error fetching posts: \(error)")
                 completion(.failure(error))
                 return
             }
             
             guard let data = data else {
-                print("DEBUG: No data received")
+                print("DEBUG: No data received for posts")
                 completion(.failure(NSError(domain: "No data", code: 0)))
                 return
             }
+            
+            print("DEBUG: Received posts data: \(String(data: data, encoding: .utf8) ?? "nil")")
             
             do {
                 let response = try JSONDecoder().decode(Response.self, from: data)
                 print("DEBUG: Successfully decoded \(response.items.count) posts")
                 completion(.success(response.items))
             } catch {
-                print("DEBUG: Decoding error: \(error)")
+                print("DEBUG: Decoding error for posts: \(error)")
                 completion(.failure(error))
             }
         }.resume()
     }
     
-    func UnpublishPost(postId: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        api.request(request: "/posts/\(postId)/unpublish", completion: completion)
+    func UnpublishPost(postId: String, completion: @escaping (Result<DataTransfer, Error>) -> Void) {
+        print("DEBUG: UnpublishPost called with postId: \(postId)")
+        // Try using POST method instead of DELETE
+        guard let url = URL(string: "\(api.baseURL)/posts/\(postId)/unpublish") else {
+            print("DEBUG: Failed to create URL for unpublish")
+            completion(.failure(NSError(domain: "URL error", code: 0)))
+            return
+        }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "accept")
+        
+        // Send empty body like publishDraft
+        let emptyRequest = EmptyRequest()
+        do {
+            let jsonData = try JSONEncoder().encode(emptyRequest)
+            urlRequest.httpBody = jsonData
+        } catch {
+            print("DEBUG: Failed to encode empty request: \(error)")
+            completion(.failure(error))
+            return
+        }
+        
+        print("DEBUG: Making POST request to unpublish: \(url)")
+        
+        URLSession.shared.dataTask(with: urlRequest) { data, response, error in
+            if let error = error {
+                print("DEBUG: Network error in unpublish: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("DEBUG: HTTP response status for unpublish: \(httpResponse.statusCode)")
+                if httpResponse.statusCode >= 400 {
+                    print("DEBUG: HTTP error status for unpublish: \(httpResponse.statusCode)")
+                    completion(.failure(NSError(domain: "HTTP error", code: httpResponse.statusCode)))
+                    return
+                }
+            }
+            
+            guard let data = data else {
+                print("DEBUG: No data received for unpublish")
+                completion(.failure(NSError(domain: "No data", code: 0)))
+                return
+            }
+            
+            print("DEBUG: Received unpublish data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            
+            do {
+                let response = try JSONDecoder().decode(DataTransfer.self, from: data)
+                print("DEBUG: Successfully decoded unpublish response: \(response.title)")
+                completion(.success(response))
+            } catch {
+                print("DEBUG: Decoding error for unpublish: \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
     }
     
     func fetchPost(postId: String, completion: @escaping (Result<DataTransfer, Error>) -> Void) {
@@ -224,25 +300,34 @@ class TagAPI {
     
     func fetchTags(completion: @escaping (Result<[String], Error>) -> Void) {
         guard let url = URL(string: "\(api.baseURL)/tags") else {
+            print("DEBUG: Failed to create URL for tags")
             completion(.failure(NSError(domain: "URL error", code: 0)))
             return
         }
         
+        print("DEBUG: Fetching tags from URL: \(url)")
+        
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
+                print("DEBUG: Network error fetching tags: \(error)")
                 completion(.failure(error))
                 return
             }
             
             guard let data = data else {
+                print("DEBUG: No data received for tags")
                 completion(.failure(NSError(domain: "No data", code: 0)))
                 return
             }
             
+            print("DEBUG: Received tags data: \(String(data: data, encoding: .utf8) ?? "nil")")
+            
             do {
                 let response = try JSONDecoder().decode(TagResponse.self, from: data)
+                print("DEBUG: Successfully decoded \(response.items.count) tags")
                 completion(.success(response.items))
             } catch {
+                print("DEBUG: Decoding error for tags: \(error)")
                 completion(.failure(error))
             }
         }.resume()

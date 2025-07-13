@@ -1,100 +1,18 @@
 import SwiftUI
 
-// Cached image view component
-struct CachedImageView: View {
-    let imageURL: String?
-    let imageName: String?
-    let placeholderImage: UIImage?
-    @State private var cachedImage: UIImage?
-    @State private var isLoading = false
-    
-    var body: some View {
-        Group {
-            if let cachedImage = cachedImage {
-                Image(uiImage: cachedImage)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            } else if let imageName = imageName {
-                Image(imageName)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            } else if let placeholderImage = placeholderImage {
-                Image(uiImage: placeholderImage)
-                    .resizable()
-                    .aspectRatio(2, contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(12)
-            } else {
-                Rectangle()
-                    .fill(Color(.systemGray5))
-                    .frame(height: 120)
-                    .cornerRadius(12)
-                    .overlay(
-                        Image(systemName: "photo")
-                            .font(.system(size: 30))
-                            .foregroundColor(.gray)
-                    )
-            }
-        }
-        .onAppear {
-            loadImage()
-        }
-    }
-    
-    private func loadImage() {
-        guard let imageURL = imageURL, cachedImage == nil else { return }
-        
-        // Check cache first
-        if let cached = ImageCache.shared.getImage(forKey: imageURL) {
-            cachedImage = cached
-            return
-        }
-        
-        isLoading = true
-        
-        // Load from network
-        guard let url = URL(string: imageURL) else { return }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            DispatchQueue.main.async {
-                isLoading = false
-                
-                if let data = data, let image = UIImage(data: data) {
-                    // Cache the image
-                    ImageCache.shared.setImage(image, forKey: imageURL)
-                    cachedImage = image
-                }
-            }
-        }.resume()
-    }
-}
-
-//struct Article: Identifiable {
-//    let id = UUID()
-//    let imageName: String
-//    let title: String
-//    let description: String
-//    let tags: [String]
-//}
-
 struct ArticlesView: View {
     @EnvironmentObject var store: ArticleStore
     @EnvironmentObject var tagsStore: TagsStore
     @EnvironmentObject var likeStore: LikeStore
+    @EnvironmentObject var userInfoStore: UserInfoStore
+    @EnvironmentObject var userTagsStore: UserTagsStore
     @State private var selectedTab: Int = 0
     @State private var searchText: String = ""
     
     let tabTitles = ["For you", "Favorites"]
     
     var filteredArticles: [Article] {
-        store.articles.filter { article in
+        let filtered = store.articles.filter { article in
             let matchesTags = tagsStore.selectedTags.isEmpty || !tagsStore.selectedTags.isDisjoint(with: Set(article.tags))
             let matchesSearch = searchText.isEmpty ? true : article.title.localizedCaseInsensitiveContains(searchText)
             
@@ -105,6 +23,7 @@ struct ArticlesView: View {
             
             return matchesTags && matchesSearch
         }
+        return filtered
     }
     
     var body: some View {
@@ -176,6 +95,7 @@ struct ArticlesView: View {
                             ArticleCard(article: article)
                                 .environmentObject(likeStore)
                                 .environmentObject(store)
+                                .environmentObject(userInfoStore)
                         }
                     }
                 }
@@ -194,8 +114,9 @@ struct ArticlesView: View {
     
     private func performSearch() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tags = Array(tagsStore.selectedTags)
-        store.loadPostsFromServer(query: query, tags: tags)
+        let selectedTags = Array(tagsStore.selectedTags)
+        print("DEBUG: ArticlesView.performSearch called with query: '\(query)', selectedTags: \(selectedTags)")
+        store.loadPostsFromServer(query: query, tags: selectedTags)
     }
 }
 
@@ -203,17 +124,12 @@ struct ArticleCard: View {
     let article: Article
     @EnvironmentObject var likeStore: LikeStore
     @EnvironmentObject var store: ArticleStore
+    @EnvironmentObject var userInfoStore: UserInfoStore
     @State private var isLiked: Bool = false
     @State private var showingUnpublishAlert = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CachedImageView(
-                imageURL: article.imageURL,
-                imageName: article.imageName,
-                placeholderImage: article.image
-            )
-            
+        VStack(alignment: .leading, spacing: 12) {
             Text("Article: \(article.title)")
                 .font(.system(size: 17, weight: .semibold))
             Text("Description: \(article.description)")
@@ -256,23 +172,20 @@ struct ArticleCard: View {
         .alert("Unpublish Article", isPresented: $showingUnpublishAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Unpublish", role: .destructive) {
-                unpublishArticle()
+                print("DEBUG: Unpublish button pressed for article: \(article.title) with id: \(article.id)")
+                store.unpublishPost(postId: article.id.uuidString) { success in
+                    if success {
+                        print("DEBUG: Article successfully unpublished and moved to drafts: \(article.title)")
+                        // The article is now moved to drafts by the ArticleStore
+                        // Decrement posted articles count
+                        userInfoStore.decrementPostedArticlesCount()
+                    } else {
+                        print("DEBUG: Unpublish failed, keeping article in list: \(article.title)")
+                    }
+                }
             }
         } message: {
             Text("Are you sure you want to unpublish this article?")
-        }
-    }
-    
-    private func unpublishArticle() {
-        // Convert UUID back to string for API call
-        let postId = article.id.uuidString
-        store.unpublishPost(postId: postId) { success in
-            if success {
-                // Remove the article from the local list
-                DispatchQueue.main.async {
-                    store.articles.removeAll { $0.id == article.id }
-                }
-            }
         }
     }
 }

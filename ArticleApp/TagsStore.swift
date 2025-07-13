@@ -6,37 +6,41 @@ class TagsStore: ObservableObject {
     @Published var serverTags: [String] = []
     
     private let userDefaults = UserDefaults.standard
-    private let cachedTagsKey = "cachedTags"
     private let selectedTagsKey = "selectedTags"
     
     init() {
-        loadCachedData()
+        loadSelectedTags()
     }
     
-    private func loadCachedData() {
-        // Load cached tags
-        if let data = userDefaults.data(forKey: cachedTagsKey),
-           let tags = try? JSONDecoder().decode([String].self, from: data) {
-            serverTags = tags
-        }
-        
-        // Load selected tags
+    private func loadSelectedTags() {
+        // Load selected tags from UserDefaults
         if let data = userDefaults.data(forKey: selectedTagsKey),
            let tags = try? JSONDecoder().decode([String].self, from: data) {
             selectedTags = Set(tags)
         }
     }
     
-    private func saveCachedData() {
-        // Save server tags
-        if let data = try? JSONEncoder().encode(serverTags) {
-            userDefaults.set(data, forKey: cachedTagsKey)
-        }
-        
-        // Save selected tags
+    private func saveSelectedTags() {
+        // Save selected tags to UserDefaults
         let selectedTagsArray = Array(selectedTags)
         if let data = try? JSONEncoder().encode(selectedTagsArray) {
             userDefaults.set(data, forKey: selectedTagsKey)
+        }
+    }
+    
+    func clearSelectedTags() {
+        selectedTags.removeAll()
+        saveSelectedTags()
+        print("DEBUG: Cleared all selected tags")
+    }
+    
+    func debugSelectedTags() {
+        print("DEBUG: Current selected tags in memory: \(selectedTags)")
+        if let data = userDefaults.data(forKey: selectedTagsKey),
+           let tags = try? JSONDecoder().decode([String].self, from: data) {
+            print("DEBUG: Selected tags in UserDefaults: \(tags)")
+        } else {
+            print("DEBUG: No selected tags found in UserDefaults")
         }
     }
     
@@ -47,12 +51,10 @@ class TagsStore: ObservableObject {
                 case .success(let tags):
                     print("Загружено тегов с сервера: \(tags.count)")
                     self.serverTags = tags
-                    self.saveCachedData()
                 case .failure(let error):
                     print("Ошибка загрузки тегов: \(error)")
                     // Keep empty array if server fails
                     self.serverTags = []
-                    self.saveCachedData()
                 }
             }
         }
@@ -64,6 +66,6 @@ class TagsStore: ObservableObject {
         } else {
             selectedTags.insert(tag)
         }
-        saveCachedData()
+        saveSelectedTags() // Save selected tags to persist them
     }
 } 

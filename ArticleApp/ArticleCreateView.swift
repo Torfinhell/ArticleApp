@@ -3,11 +3,11 @@ import SwiftUI
 struct ArticleCreateView: View {
     @Environment(\.presentationMode) var presentationMode
     @ObservedObject var store: ArticleStore
+    @EnvironmentObject var userInfoStore: UserInfoStore
+    @EnvironmentObject var userTagsStore: UserTagsStore
     let allTags: [String]
     var draftToEdit: Article? = nil
     
-    @State private var image: UIImage? = nil
-    @State private var showImagePicker = false
     @State private var title: String = ""
     @State private var description: String = ""
     @State private var selectedTags: Set<String> = []
@@ -17,33 +17,6 @@ struct ArticleCreateView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Картинка
-                    Button(action: { showImagePicker = true }) {
-                        if let image = image {
-                            Image(uiImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(height: 160)
-                                .clipped()
-                                .cornerRadius(14)
-                        } else {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color(.systemGray6))
-                                    .frame(height: 160)
-                                Image(systemName: "photo.on.rectangle")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.gray)
-                                Text("Add Image")
-                                    .foregroundColor(.gray)
-                                    .offset(y: 40)
-                            }
-                        }
-                    }
-                    .sheet(isPresented: $showImagePicker) {
-                        ImagePicker(image: $image)
-                    }
-                    
                     // Название
                     TextField("Title", text: $title)
                         .font(.system(size: 20, weight: .semibold))
@@ -94,8 +67,6 @@ struct ArticleCreateView: View {
                                     case .success(let updatedDraft):
                                         let updatedArticle = Article(
                                             id: UUID(uuidString: updatedDraft.id) ?? draft.id,
-                                            image: image,
-                                            imageName: nil,
                                             title: updatedDraft.title,
                                             description: updatedDraft.content,
                                             tags: updatedDraft.tags,
@@ -117,8 +88,6 @@ struct ArticleCreateView: View {
                                     case .success(let newDraft):
                                         let article = Article(
                                             id: UUID(uuidString: newDraft.id) ?? UUID(),
-                                            image: image,
-                                            imageName: nil,
                                             title: newDraft.title,
                                             description: newDraft.content,
                                             tags: newDraft.tags,
@@ -142,6 +111,11 @@ struct ArticleCreateView: View {
                             .cornerRadius(16)
                     }
                     Button(action: {
+                        // Save user tags when publishing
+                        for tag in selectedTags {
+                            userTagsStore.addUserTag(tag)
+                        }
+                        
                         if let draft = draftToEdit {
                             // Update and publish existing draft
                             DraftsAPI.shared.editDraft(draftId: draft.id.uuidString, title: title, content: description, tags: Array(selectedTags)) { result in
@@ -155,8 +129,6 @@ struct ArticleCreateView: View {
                                                 case .success(let publishedPost):
                                                     let publishedArticle = Article(
                                                         id: UUID(uuidString: publishedPost.id) ?? draft.id,
-                                                        image: image,
-                                                        imageName: nil,
                                                         title: publishedPost.title,
                                                         description: publishedPost.content,
                                                         tags: publishedPost.tags,
@@ -164,6 +136,7 @@ struct ArticleCreateView: View {
                                                     )
                                                     store.removeDraft(draft)
                                                     store.addArticle(publishedArticle)
+                                                    userInfoStore.incrementPostedArticlesCount()
                                                     presentationMode.wrappedValue.dismiss()
                                                 case .failure(let error):
                                                     print("Error publishing draft: \(error)")
@@ -188,14 +161,13 @@ struct ArticleCreateView: View {
                                                 case .success(let publishedPost):
                                                     let publishedArticle = Article(
                                                         id: UUID(uuidString: publishedPost.id) ?? UUID(),
-                                                        image: image,
-                                                        imageName: nil,
                                                         title: publishedPost.title,
                                                         description: publishedPost.content,
                                                         tags: publishedPost.tags,
                                                         isDraft: false
                                                     )
                                                     store.addArticle(publishedArticle)
+                                                    userInfoStore.incrementPostedArticlesCount()
                                                     presentationMode.wrappedValue.dismiss()
                                                 case .failure(let error):
                                                     print("Error publishing draft: \(error)")
@@ -225,7 +197,6 @@ struct ArticleCreateView: View {
                     self.title = draft.title
                     self.description = draft.description
                     self.selectedTags = Set(draft.tags)
-                    self.image = draft.image
                     self.didSetup = true
                 }
             }

@@ -1,47 +1,14 @@
 import SwiftUI
 
-// Image cache utility
-class ImageCache {
-    static let shared = ImageCache()
-    private let cache = NSCache<NSString, UIImage>()
-    
-    private init() {
-        cache.countLimit = 100 // Maximum number of images to cache
-        cache.totalCostLimit = 1024 * 1024 * 100 // 100 MB limit
-    }
-    
-    func setImage(_ image: UIImage, forKey key: String) {
-        cache.setObject(image, forKey: key as NSString)
-    }
-    
-    func getImage(forKey key: String) -> UIImage? {
-        return cache.object(forKey: key as NSString)
-    }
-    
-    func removeImage(forKey key: String) {
-        cache.removeObject(forKey: key as NSString)
-    }
-    
-    func clearCache() {
-        cache.removeAllObjects()
-    }
-}
-
 struct Article: Identifiable, Equatable {
     let id: UUID
-    var image: UIImage?
-    var imageName: String? // для ассетов
-    var imageURL: String? // для сетевых изображений
     var title: String
     var description: String
     var tags: [String]
     var isDraft: Bool
     
-    init(id: UUID = UUID(), image: UIImage? = nil, imageName: String? = nil, imageURL: String? = nil, title: String, description: String, tags: [String], isDraft: Bool) {
+    init(id: UUID = UUID(), title: String, description: String, tags: [String], isDraft: Bool) {
         self.id = id
-        self.image = image
-        self.imageName = imageName
-        self.imageURL = imageURL
         self.title = title
         self.description = description
         self.tags = tags
@@ -49,93 +16,24 @@ struct Article: Identifiable, Equatable {
     }
 }
 
-// Codable struct for caching
-struct CachedArticle: Codable {
-    let id: String
-    let title: String
-    let description: String
-    let tags: [String]
-    let isDraft: Bool
-    let timestamp: Date
-    
-    init(from article: Article) {
-        self.id = article.id.uuidString
-        self.title = article.title
-        self.description = article.description
-        self.tags = article.tags
-        self.isDraft = article.isDraft
-        self.timestamp = Date()
-    }
-    
-    func toArticle() -> Article? {
-        guard let uuid = UUID(uuidString: id) else { return nil }
-        return Article(
-            id: uuid,
-            image: nil,
-            imageName: nil,
-            imageURL: nil, // CachedArticle does not store imageURL
-            title: title,
-            description: description,
-            tags: tags,
-            isDraft: isDraft
-        )
-    }
-}
-
 class ArticleStore: ObservableObject {
     @Published var articles: [Article] = []
     @Published var drafts: [Article] = []
     
-    private let userDefaults = UserDefaults.standard
-    private let cachedPostsKey = "cachedPosts"
-    private let cachedDraftsKey = "cachedDrafts"
-    private let maxCachedItems = 10
-    
     init() {
-        loadCachedData()
-    }
-    
-    private func loadCachedData() {
-        // Load cached posts
-        if let data = userDefaults.data(forKey: cachedPostsKey),
-           let cachedPosts = try? JSONDecoder().decode([CachedArticle].self, from: data) {
-            articles = cachedPosts.compactMap { $0.toArticle() }
-        }
-        
-        // Load cached drafts
-        if let data = userDefaults.data(forKey: cachedDraftsKey),
-           let cachedDrafts = try? JSONDecoder().decode([CachedArticle].self, from: data) {
-            drafts = cachedDrafts.compactMap { $0.toArticle() }
-        }
-    }
-    
-    private func saveCachedData() {
-        // Save posts (keep only last 10)
-        let cachedPosts = articles.prefix(maxCachedItems).map { CachedArticle(from: $0) }
-        if let data = try? JSONEncoder().encode(cachedPosts) {
-            userDefaults.set(data, forKey: cachedPostsKey)
-        }
-        
-        // Save drafts (keep only last 10)
-        let cachedDrafts = drafts.prefix(maxCachedItems).map { CachedArticle(from: $0) }
-        if let data = try? JSONEncoder().encode(cachedDrafts) {
-            userDefaults.set(data, forKey: cachedDraftsKey)
-        }
+        // No cache loading - data will be fetched from server
     }
     
     func addArticle(_ article: Article) {
         articles.insert(article, at: 0)
-        saveCachedData()
     }
     
     func addDraft(_ article: Article) {
         drafts.insert(article, at: 0)
-        saveCachedData()
     }
     
     func removeDraft(_ article: Article) {
         drafts.removeAll { $0.id == article.id }
-        saveCachedData()
     }
     
     func loadDraftsFromServer() {
@@ -144,21 +42,17 @@ class ArticleStore: ObservableObject {
                 switch result {
                 case .success(let draftsDTO):
                     print("Загружено черновиков с сервера: \(draftsDTO.count)")
-                    self.drafts = draftsDTO.prefix(self.maxCachedItems).compactMap { dto in
+                    self.drafts = draftsDTO.compactMap { dto in
                         print("Draft: \(dto.title), id: \(dto.id)")
                         guard let uuid = UUID(uuidString: dto.id) else { return nil }
                         return Article(
                             id: uuid,
-                            image: nil,
-                            imageName: nil,
-                            imageURL: nil,
                             title: dto.title,
                             description: dto.content,
                             tags: dto.tags,
                             isDraft: true
                         )
                     }
-                    self.saveCachedData()
                 case .failure(let error):
                     print("Ошибка загрузки черновиков: \(error)")
                 }
@@ -167,42 +61,91 @@ class ArticleStore: ObservableObject {
     }
     
     func loadPostsFromServer(query: String = "", tags: [String] = []) {
+        print("DEBUG: ArticleStore.loadPostsFromServer called with query: '\(query)', tags: \(tags)")
         PostsAPI.shared.fetchPosts(query: query, tags: tags) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let postsDTO):
-                    print("Загружено постов с сервера: \(postsDTO.count)")
-                    self.articles = postsDTO.prefix(self.maxCachedItems).compactMap { dto in
-                        print("Post: \(dto.title), id: \(dto.id)")
+                    print("DEBUG: ArticleStore received \(postsDTO.count) posts from server")
+                    self.articles = postsDTO.compactMap { dto in
+                        print("DEBUG: Processing post: \(dto.title), id: \(dto.id)")
+                        guard let uuid = UUID(uuidString: dto.id) else { 
+                            print("DEBUG: Failed to create UUID from string: \(dto.id)")
+                            return nil 
+                        }
+                        let article = Article(
+                            id: uuid,
+                            title: dto.title,
+                            description: dto.content,
+                            tags: dto.tags,
+                            isDraft: false
+                        )
+                        print("DEBUG: Created article: \(article.title)")
+                        return article
+                    }
+                    print("DEBUG: ArticleStore now has \(self.articles.count) articles")
+                    
+                    // Test: Print all articles to see if they're loaded
+                    for (index, article) in self.articles.enumerated() {
+                        print("DEBUG: Article \(index): \(article.title) - Tags: \(article.tags)")
+                    }
+                case .failure(let error):
+                    print("DEBUG: ArticleStore error loading posts: \(error)")
+                }
+            }
+        }
+    }
+    
+    // Test function to load all posts without filtering
+    func loadAllPosts() {
+        print("DEBUG: Testing loadAllPosts")
+        PostsAPI.shared.fetchPosts(query: "", tags: []) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let postsDTO):
+                    print("DEBUG: Test - Received \(postsDTO.count) posts")
+                    self.articles = postsDTO.compactMap { dto in
                         guard let uuid = UUID(uuidString: dto.id) else { return nil }
                         return Article(
                             id: uuid,
-                            image: nil,
-                            imageName: nil,
-                            imageURL: nil,
                             title: dto.title,
                             description: dto.content,
                             tags: dto.tags,
                             isDraft: false
                         )
                     }
-                    self.saveCachedData()
+                    print("DEBUG: Test - Now have \(self.articles.count) articles")
                 case .failure(let error):
-                    print("Ошибка загрузки постов: \(error)")
+                    print("DEBUG: Test - Error: \(error)")
                 }
             }
         }
     }
     
     func unpublishPost(postId: String, completion: @escaping (Bool) -> Void) {
+        print("DEBUG: ArticleStore.unpublishPost called with postId: \(postId)")
         PostsAPI.shared.UnpublishPost(postId: postId) { result in
             DispatchQueue.main.async {
                 switch result {
-                case .success:
-                    print("Пост успешно снят с публикации")
+                case .success(let unpublishedPost):
+                    print("DEBUG: Post successfully unpublished on server: \(unpublishedPost.title)")
+                    // The post is now a draft, so we should move it to drafts
+                    if let uuid = UUID(uuidString: unpublishedPost.id) {
+                        let draftArticle = Article(
+                            id: uuid,
+                            title: unpublishedPost.title,
+                            description: unpublishedPost.content,
+                            tags: unpublishedPost.tags,
+                            isDraft: true
+                        )
+                        // Remove from articles and add to drafts
+                        self.articles.removeAll { $0.id == uuid }
+                        self.addDraft(draftArticle)
+                        print("DEBUG: Moved unpublished post to drafts: \(draftArticle.title)")
+                    }
                     completion(true)
                 case .failure(let error):
-                    print("Ошибка снятия поста с публикации: \(error)")
+                    print("DEBUG: Error unpublishing post: \(error)")
                     completion(false)
                 }
             }

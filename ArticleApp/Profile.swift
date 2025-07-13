@@ -2,9 +2,11 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var store: ArticleStore
-    @State private var selectedTab: Int = 1
+    @EnvironmentObject var userInfoStore: UserInfoStore
+    @State private var selectedTab: Int = 0
     @State private var showCreateArticle = false
     @State private var editingDraft: Article? = nil
+    @State private var userName: String = ""
     
     // Теги, которые есть во вкладке Tags (можно вынести в отдельное хранилище при необходимости)
     let allTags = ["IT", "Biology", "Science", "AI", "Plants", "School", "University"]
@@ -42,71 +44,110 @@ struct ProfileView: View {
                 .padding(.bottom, 8)
                 
                 if selectedTab == 0 {
-                    // Информация о пользователе (заглушка)
-                    Spacer()
-                    HStack {
+                    // Информация о пользователе
+                    VStack(spacing: 20) {
                         Spacer()
-                        Text("User information here")
-                            .foregroundColor(.gray)
-                        Spacer()
-                    }
-                    Spacer()
-                } else {
-                    // Черновики
-                    ScrollView {
-                        LazyVStack(spacing: 20) {
-                            ForEach(store.drafts) { draft in
-                                DraftCard(article: draft, store: store, onEditWithDraft: { article in
-                                    editingDraft = article
-                                    showCreateArticle = true
-                                }, onPublish: {
-                                    // Use the API to publish the draft
-                                    DraftsAPI.shared.publishDraft(draftId: draft.id.uuidString) { result in
-                                        DispatchQueue.main.async {
-                                            switch result {
-                                            case .success(let publishedPost):
-                                                print("Draft published successfully: \(publishedPost.title)")
-                                                // Remove from drafts and add to articles
-                                                store.removeDraft(draft)
-                                                let publishedArticle = Article(
-                                                    id: UUID(uuidString: publishedPost.id) ?? draft.id,
-                                                    image: draft.image,
-                                                    imageName: draft.imageName,
-                                                    imageURL: draft.imageURL,
-                                                    title: publishedPost.title,
-                                                    description: publishedPost.content,
-                                                    tags: publishedPost.tags,
-                                                    isDraft: false
-                                                )
-                                                store.addArticle(publishedArticle)
-                                            case .failure(let error):
-                                                print("Error publishing draft: \(error)")
-                                            }
-                                        }
+                        
+                        VStack(spacing: 16) {
+                            Image(systemName: "person.circle.fill")
+                                .font(.system(size: 80))
+                                .foregroundColor(.gray)
+                            
+                            VStack(spacing: 8) {
+                                Text("User Name")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.gray)
+                                
+                                TextField("Enter your name", text: $userName)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(maxWidth: 200)
+                                    .multilineTextAlignment(.center)
+                                    .onAppear {
+                                        userName = userInfoStore.userName
                                     }
-                                })
+                                    .onChange(of: userName) { newValue in
+                                        userInfoStore.updateUserName(newValue)
+                                    }
+                            }
+                            
+                            VStack(spacing: 8) {
+                                Text("Posted Articles")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.gray)
+                                
+                                Text("\(userInfoStore.postedArticlesCount)")
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundColor(.black)
                             }
                         }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(16)
+                        .shadow(color: Color(.black).opacity(0.04), radius: 4, x: 0, y: 2)
                         .padding(.horizontal)
-                        .padding(.top, 8)
-                        .padding(.bottom, 80)
+                        
+                        Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .offset(y: -100) // Lift up the view
+                } else {
+                    // Черновики
+                    ZStack(alignment: .bottomTrailing) {
+                        ScrollView {
+                            LazyVStack(spacing: 20) {
+                                ForEach(store.drafts) { draft in
+                                    DraftCard(article: draft, store: store, onEditWithDraft: { article in
+                                        editingDraft = article
+                                        showCreateArticle = true
+                                    }, onPublish: {
+                                        // Use the API to publish the draft
+                                        DraftsAPI.shared.publishDraft(draftId: draft.id.uuidString) { result in
+                                            DispatchQueue.main.async {
+                                                switch result {
+                                                case .success(let publishedPost):
+                                                    print("Draft published successfully: \(publishedPost.title)")
+                                                    // Remove from drafts and add to articles
+                                                    store.removeDraft(draft)
+                                                    let publishedArticle = Article(
+                                                        id: UUID(uuidString: publishedPost.id) ?? draft.id,
+                                                        title: publishedPost.title,
+                                                        description: publishedPost.content,
+                                                        tags: publishedPost.tags,
+                                                        isDraft: false
+                                                    )
+                                                    store.addArticle(publishedArticle)
+                                                    // Increment posted articles count
+                                                    userInfoStore.incrementPostedArticlesCount()
+                                                case .failure(let error):
+                                                    print("Error publishing draft: \(error)")
+                                                }
+                                            }
+                                        }
+                                    })
+                                }
+                            }
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            .padding(.bottom, 80)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        
+                        // Кнопка Add Draft - только в Drafts tab
+                        Button(action: { showCreateArticle = true }) {
+                            Text("Add Draft")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 28)
+                                .padding(.vertical, 14)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(24)
+                                .shadow(color: Color(.black).opacity(0.04), radius: 2, x: 0, y: 1)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
+                    }
                 }
             }
-            // Кнопка Add Draft
-            Button(action: { showCreateArticle = true }) {
-                Text("Add Draft")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 14)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(24)
-                    .shadow(color: Color(.black).opacity(0.04), radius: 2, x: 0, y: 1)
-            }
-            .padding(.trailing, 20)
-            .padding(.bottom, 20)
             .sheet(isPresented: $showCreateArticle, onDismiss: { editingDraft = nil }) {
                 ArticleCreateView(store: store, allTags: allTags, draftToEdit: editingDraft)
             }
@@ -128,13 +169,7 @@ struct DraftCard: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                CachedImageView(
-                    imageURL: article.imageURL,
-                    imageName: article.imageName,
-                    placeholderImage: article.image
-                )
-                
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Article: \(article.title)")
                     .font(.system(size: 17, weight: .semibold))
                 if showFullDescription || article.description.count <= 100 {
@@ -207,9 +242,6 @@ struct DraftCard: View {
                                 case .success(let updatedDraft):
                                     let editedDraft = Article(
                                         id: UUID(uuidString: updatedDraft.id) ?? article.id,
-                                        image: article.image,
-                                        imageName: article.imageName,
-                                        imageURL: article.imageURL,
                                         title: updatedDraft.title,
                                         description: updatedDraft.content,
                                         tags: updatedDraft.tags,
