@@ -60,8 +60,29 @@ struct ProfileView: View {
                                     editingDraft = article
                                     showCreateArticle = true
                                 }, onPublish: {
-                                    store.addArticle(Article(id: draft.id, image: draft.image, imageName: draft.imageName, title: draft.title, description: draft.description, tags: draft.tags, isDraft: false))
-                                    store.removeDraft(draft)
+                                    // Use the API to publish the draft
+                                    DraftsAPI.shared.publishDraft(draftId: draft.id.uuidString) { result in
+                                        DispatchQueue.main.async {
+                                            switch result {
+                                            case .success(let publishedPost):
+                                                print("Draft published successfully: \(publishedPost.title)")
+                                                // Remove from drafts and add to articles
+                                                store.removeDraft(draft)
+                                                let publishedArticle = Article(
+                                                    id: UUID(uuidString: publishedPost.id) ?? draft.id,
+                                                    image: draft.image,
+                                                    imageName: draft.imageName,
+                                                    title: publishedPost.title,
+                                                    description: publishedPost.content,
+                                                    tags: publishedPost.tags,
+                                                    isDraft: false
+                                                )
+                                                store.addArticle(publishedArticle)
+                                            case .failure(let error):
+                                                print("Error publishing draft: \(error)")
+                                            }
+                                        }
+                                    }
                                 })
                             }
                         }
@@ -168,7 +189,7 @@ struct DraftCard: View {
                                 case .success:
                                     store.removeDraft(article)
                                 case .failure(let error):
-                                    print("Ошибка удаления черновика: \(error)")
+                                    print("Error deleting draft: \(error)")
                                 }
                             }
                         }
@@ -187,23 +208,23 @@ struct DraftCard: View {
                     }
                     Button(action: {
                         isLoadingEdit = true
-                        DraftsAPI.shared.fetchDraft(draftId: article.id.uuidString) { result in
+                        DraftsAPI.shared.editDraft(draftId: article.id.uuidString, title: article.title, content: article.description, tags: article.tags) { result in
                             DispatchQueue.main.async {
                                 isLoadingEdit = false
                                 switch result {
-                                case .success(let draftDTO):
-                                    let loadedDraft = Article(
-                                        id: UUID(uuidString: draftDTO.id) ?? UUID(),
-                                        image: nil,
-                                        imageName: nil,
-                                        title: draftDTO.title,
-                                        description: draftDTO.content,
-                                        tags: draftDTO.tags,
+                                case .success(let updatedDraft):
+                                    let editedDraft = Article(
+                                        id: UUID(uuidString: updatedDraft.id) ?? article.id,
+                                        image: article.image,
+                                        imageName: article.imageName,
+                                        title: updatedDraft.title,
+                                        description: updatedDraft.content,
+                                        tags: updatedDraft.tags,
                                         isDraft: true
                                     )
-                                    onEditWithDraft?(loadedDraft)
+                                    onEditWithDraft?(editedDraft)
                                 case .failure(let error):
-                                    print("Ошибка загрузки черновика для редактирования: \(error)")
+                                    print("Error editing draft: \(error)")
                                 }
                             }
                         }

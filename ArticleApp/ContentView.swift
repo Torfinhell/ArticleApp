@@ -3,8 +3,6 @@ import SwiftUI
 struct TagsView: View {
     @EnvironmentObject var tagsStore: TagsStore
     
-    let tags = ["IT", "Biology", "Science", "AI", "Plants", "School", "University"]
-    
     var body: some View {
         VStack {
             Text("Tags")
@@ -16,20 +14,19 @@ struct TagsView: View {
 
             // Tags grid
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
-                ForEach(tags, id: \.self) { tag in
+                ForEach(tagsStore.serverTags.isEmpty ? ["IT", "Biology", "Science", "AI", "Plants", "School", "University"] : tagsStore.serverTags, id: \.self) { tag in
                     TagView(title: tag, isSelected: tagsStore.selectedTags.contains(tag))
                         .onTapGesture {
-                            if tagsStore.selectedTags.contains(tag) {
-                                tagsStore.selectedTags.remove(tag)
-                            } else {
-                                tagsStore.selectedTags.insert(tag)
-                            }
+                            tagsStore.toggleTag(tag)
                         }
                 }
             }
             .padding(.horizontal)
 
             Spacer()
+        }
+        .onAppear {
+            tagsStore.loadTagsFromServer()
         }
     }
 }
