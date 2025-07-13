@@ -61,25 +61,18 @@ struct ArticleCreateView: View {
                     // Теги
                     Text("Tags:")
                         .font(.system(size: 16, weight: .medium))
-                    let columns = [GridItem(.adaptive(minimum: 80), spacing: 8)]
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(allTags, id: \.self) { tag in
-                            Text(tag)
-                                .font(.system(size: 15))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(selectedTags.contains(tag) ? Color.black : Color(.systemGray6))
-                                .foregroundColor(selectedTags.contains(tag) ? .white : .black)
-                                .cornerRadius(16)
-                                .onTapGesture {
-                                    if selectedTags.contains(tag) {
-                                        selectedTags.remove(tag)
-                                    } else {
-                                        selectedTags.insert(tag)
-                                    }
-                                }
+                    TextField("Enter tags separated by commas", text: Binding(
+                        get: { selectedTags.joined(separator: ", ") },
+                        set: { newValue in
+                            let tags = newValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                            selectedTags = Set(tags)
                         }
-                    }
+                    ))
+                    .font(.system(size: 15))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(16)
                 }
                 .padding()
             }
@@ -94,11 +87,51 @@ struct ArticleCreateView: View {
                 HStack(spacing: 16) {
                     Button(action: {
                         if let draft = draftToEdit {
-                            store.removeDraft(draft)
+                            // Update existing draft
+                            DraftsAPI.shared.editDraft(draftId: draft.id.uuidString, title: title, content: description, tags: Array(selectedTags)) { result in
+                                DispatchQueue.main.async {
+                                    switch result {
+                                    case .success(let updatedDraft):
+                                        let updatedArticle = Article(
+                                            id: UUID(uuidString: updatedDraft.id) ?? draft.id,
+                                            image: image,
+                                            imageName: nil,
+                                            title: updatedDraft.title,
+                                            description: updatedDraft.content,
+                                            tags: updatedDraft.tags,
+                                            isDraft: true
+                                        )
+                                        store.removeDraft(draft)
+                                        store.addDraft(updatedArticle)
+                                        presentationMode.wrappedValue.dismiss()
+                                    case .failure(let error):
+                                        print("Error updating draft: \(error)")
+                                    }
+                                }
+                            }
+                        } else {
+                            // Create new draft
+                            DraftsAPI.shared.addDraft(title: title, content: description, tags: Array(selectedTags)) { result in
+                                DispatchQueue.main.async {
+                                    switch result {
+                                    case .success(let newDraft):
+                                        let article = Article(
+                                            id: UUID(uuidString: newDraft.id) ?? UUID(),
+                                            image: image,
+                                            imageName: nil,
+                                            title: newDraft.title,
+                                            description: newDraft.content,
+                                            tags: newDraft.tags,
+                                            isDraft: true
+                                        )
+                                        store.addDraft(article)
+                                        presentationMode.wrappedValue.dismiss()
+                                    case .failure(let error):
+                                        print("Error creating draft: \(error)")
+                                    }
+                                }
+                            }
                         }
-                        let article = Article(image: image, title: title, description: description, tags: Array(selectedTags), isDraft: true)
-                        store.addDraft(article)
-                        presentationMode.wrappedValue.dismiss()
                     }) {
                         Text("Save Draft")
                             .font(.system(size: 17, weight: .medium))
@@ -110,11 +143,71 @@ struct ArticleCreateView: View {
                     }
                     Button(action: {
                         if let draft = draftToEdit {
-                            store.removeDraft(draft)
+                            // Update and publish existing draft
+                            DraftsAPI.shared.editDraft(draftId: draft.id.uuidString, title: title, content: description, tags: Array(selectedTags)) { result in
+                                DispatchQueue.main.async {
+                                    switch result {
+                                    case .success(let updatedDraft):
+                                        // Publish the updated draft
+                                        DraftsAPI.shared.publishDraft(draftId: updatedDraft.id) { publishResult in
+                                            DispatchQueue.main.async {
+                                                switch publishResult {
+                                                case .success(let publishedPost):
+                                                    let publishedArticle = Article(
+                                                        id: UUID(uuidString: publishedPost.id) ?? draft.id,
+                                                        image: image,
+                                                        imageName: nil,
+                                                        title: publishedPost.title,
+                                                        description: publishedPost.content,
+                                                        tags: publishedPost.tags,
+                                                        isDraft: false
+                                                    )
+                                                    store.removeDraft(draft)
+                                                    store.addArticle(publishedArticle)
+                                                    presentationMode.wrappedValue.dismiss()
+                                                case .failure(let error):
+                                                    print("Error publishing draft: \(error)")
+                                                }
+                                            }
+                                        }
+                                    case .failure(let error):
+                                        print("Error updating draft: \(error)")
+                                    }
+                                }
+                            }
+                        } else {
+                            // Create new draft and publish it
+                            DraftsAPI.shared.addDraft(title: title, content: description, tags: Array(selectedTags)) { result in
+                                DispatchQueue.main.async {
+                                    switch result {
+                                    case .success(let newDraft):
+                                        // Publish the new draft
+                                        DraftsAPI.shared.publishDraft(draftId: newDraft.id) { publishResult in
+                                            DispatchQueue.main.async {
+                                                switch publishResult {
+                                                case .success(let publishedPost):
+                                                    let publishedArticle = Article(
+                                                        id: UUID(uuidString: publishedPost.id) ?? UUID(),
+                                                        image: image,
+                                                        imageName: nil,
+                                                        title: publishedPost.title,
+                                                        description: publishedPost.content,
+                                                        tags: publishedPost.tags,
+                                                        isDraft: false
+                                                    )
+                                                    store.addArticle(publishedArticle)
+                                                    presentationMode.wrappedValue.dismiss()
+                                                case .failure(let error):
+                                                    print("Error publishing draft: \(error)")
+                                                }
+                                            }
+                                        }
+                                    case .failure(let error):
+                                        print("Error creating draft: \(error)")
+                                    }
+                                }
+                            }
                         }
-                        let article = Article(image: image, title: title, description: description, tags: Array(selectedTags), isDraft: false)
-                        store.addArticle(article)
-                        presentationMode.wrappedValue.dismiss()
                     }) {
                         Text("Publish")
                             .font(.system(size: 17, weight: .medium))

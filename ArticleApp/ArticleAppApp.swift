@@ -14,7 +14,7 @@ struct ArticleAppApp: App {
     @StateObject var likeStore = LikeStore() // создаём один экземпляр для лайков
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            ContentView()
                 .environmentObject(store)
                 .environmentObject(tagsStore)
                 .environmentObject(likeStore)
